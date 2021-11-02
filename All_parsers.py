@@ -54,7 +54,7 @@ def get_descr_glassdoor(link, headers):    # Getting description walking string 
     return descr_fine
 
 
-def parsing_glasdoor():
+def parsing_glassdoor():
     search_url = create_search_url_glassdoor()
     headers = {
         "Accept": "image/avif,image/webp,*/*",
@@ -191,7 +191,7 @@ def parsing_dev():
     print("All vacancies from Dev.by are presented")
 
 
-parsing_glasdoor()
+parsing_glassdoor()
 # parsing_dev()
 
 
