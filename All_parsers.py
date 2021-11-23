@@ -1,24 +1,41 @@
 import re
-
-from flask import Flask
+from flask import Flask, request, url_for, jsonify
+from flask_pymongo import PyMongo
 import requests, random, time
 from bs4 import BeautifulSoup as bs
+from datetime import datetime
 from bs4 import NavigableString, Comment
 from pprint import pprint
 
 app = Flask(__name__)
 
 
+""" Local DB """
+# app.config["MONGO_URI"] = "mongodb://localhost:27017/DataBaza"
+# mongodb_client = PyMongo(app)
+# db = mongodb_client.db
+
+
+""" ITCoty DataBase """
+app.config["MONGO_URI"] = "mongodb+srv://admin:192168011@cluster0.f8yiv.mongodb.net/ITCOTY?retryWrites=true&w=majority"
+mongodb_client = PyMongo(app)
+db = mongodb_client.db
+
+
+
+def prepare_search_input(query_input):
+        if len(query_input) != 0:
+            search_query = query_input
+        else:
+            return "Please enter keyword"
+        url_add = "".join([f"%20{i}" if len(search_query) > 1 else i for i in search_query]).strip("%20")
+        return url_add
+
+
 def create_search_url_glassdoor():
     query_input = input("\nGlassdoor.com\nEnter keywords by space here: ").split()
-    if len(query_input) != 0:
-        search_query = query_input
-    else:
-        return "Please enter keyword"
-
-    url_add = "".join([f"%20{i}" if len(search_query) > 1 else i for i in search_query]).strip("%20")
+    url_add = prepare_search_input(query_input)
     search_url = "https://www.glassdoor.com/Job/jobs.htm?sc.keyword=" + url_add
-    print(f"\nSearch link is: {search_url}\n")
     return search_url
 
 
@@ -56,6 +73,7 @@ def get_descr_glassdoor(link, headers):    # Getting description walking string 
 
 def parsing_glassdoor():
     search_url = create_search_url_glassdoor()
+    print(f"\nSearch link is: {search_url}\n")
     headers = {
         "Accept": "image/avif,image/webp,*/*",
         "User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -89,16 +107,28 @@ def parsing_glassdoor():
             sal = is_exists_glassdoor(vac.find("span", {"data-test": "detailSalary"}))                      # Salary
             comp = is_exists_glassdoor(vac.find("div", {"class": "flex-nowrap"}).find_previous_sibling())   # Company
             loc = is_exists_glassdoor(vac.find("span", {"class": "css-1buaf54"}))                           # Location
-            vac_id = vac.get("data-id")                                                                  # Vacancy ID
-            linkv = "https://www.glassdoor.com" + vac.find("a", {"data-test": "job-link"}).get("href")   # Link
-            descr = get_descr_glassdoor(linkv, headers)
+            vac_ID = vac.get("data-id")                                                                  # Vacancy ID
+            link = "https://www.glassdoor.com" + vac.find("a", {"data-test": "job-link"}).get("href")   # Link
+            descr = get_descr_glassdoor(link, headers)
 
             count += 1
-            print(f' {count}\n Position: {pos}\n Salary: {sal}\n Company: {comp}\n Location: {loc}\n '
-                  f'ID: {vac_id}\n Link: {linkv}\n Description: \n{descr}\n')
+            # print(f' {count}\n Position: {pos}\n Salary: {sal}\n Company: {comp}\n Location: {loc}\n '
+            #       f'ID: {vac_ID}\n Link: {link}\n Description: \n{descr}\n')
 
-            # time.sleep(random.randrange(1, 3))
-            all_id.append(vac_id) if vac_id not in all_id else print("This vacancy already exists")
+            vacancy = {
+                'Position': pos,
+                'Salary': sal,
+                'Company_name': comp,
+                'Location': loc,
+                'ID vacancy': vac_ID,
+                'Link': link,
+                'Description': descr,
+            }
+
+            db.Vacancies.insert(vacancy)
+            time.sleep(random.randrange(1, 2))
+            # all_id.append(vac_id) if vac_id not in all_id else print("This vacancy already exists")
+            print(f"Vacancy {count} inserted in DB")
 
         page_num += 1
 
@@ -107,13 +137,7 @@ def parsing_glassdoor():
 
 def create_search_url_dev():
     query_input = input("\nDev.by\nEnter keywords by space here: ").split()
-    # query_input = "3"
-    if len(query_input) != 0:
-        search_query = query_input
-    else:
-        return "Please enter keyword"
-
-    url_add = "".join([f"%20{i}" if len(search_query) > 1 else i for i in search_query]).strip("%20")
+    url_add = prepare_search_input(query_input)
     search_url = f'https://jobs.dev.by/?&filter%5Bsearch%5D={url_add}'
     return search_url
 
@@ -157,13 +181,15 @@ def parsing_dev():
     req = requests.get(url=search_url, headers=headers)
     page = bs(req.text, "lxml")
     all_vacs = page.findAll("div", class_="vacancies-list-item")    # All vacancies as bs's elements
+    all_vacs_qty = page.find('h1', class_="vacancies-list__header-title").text.split()[0]
 
     vac_num = 1
     for vac in all_vacs:
         premium_vac_banner = vac.find("a", class_="button--link")
         email_vac_service = vac.find("div", class_="vacancies-item-banner")
-        if not (premium_vac_banner or email_vac_service):
+        if not premium_vac_banner and not email_vac_service:
             link = "https://jobs.dev.by" + vac.find("a", class_="vacancies-list-item__link_block").get("href")
+            vac_ID = link.split("/")[-1]
             vac_req = requests.get(url=link, headers=headers)
             vac_bs = bs(vac_req.text, "lxml")
             pos = is_exists_dev(vac_bs.find("h1", class_="title"))
@@ -181,18 +207,40 @@ def parsing_dev():
             skills = ", ".join([i.next_element.text for i in skills_in_tags if skills_in_tags])
             descr = get_descr_dev(vac_bs)
 
-            print(f"{vac_num}/{len(all_vacs)-2}\nPosition: {pos}\nSpecialization: {spec}\nLevel: {level}"
-                  f"\nExpirience: {expir}\nEnglish level: {english}\nSalary: {salary}\nLocation: {loc}"
-                  f"\nSchedule: {sched}\nCo-workers: {cows}\nCompany size: {comp_size}\nRemote: {remote}"
-                  f"\nSkills: {skills}\nDescription: {descr}\nLink: {link}\n")
-            vac_num += 1
+            # print(f"{vac_num}/{all_vacs_qty}\nPosition: {pos}\nSpecialization: {spec}\nLevel: {level}"
+            #       f"\nExpirience: {expir}\nEnglish level: {english}\nSalary: {salary}\nLocation: {loc}"
+            #       f"\nSchedule: {sched}\nCo-workers: {cows}\nCompany size: {comp_size}\nRemote: {remote}"
+            #       f"\nSkills: {skills}\nID vacancy: {vac_ID}\nDescription: {descr}\nLink: {link}\n")
+
+            vacancy = {
+                'Position': pos,
+                'Specialization': spec,
+                'Level': level,
+                'Expirience': expir,
+                'English_level': english,
+                'Salary': salary,
+                'Location': loc,
+                'Schedule': sched,
+                'Command_size': cows,
+                'Company size': comp_size,
+                'Remote': remote,
+                'Skills': skills,
+                'ID vacancy': vac_ID,
+                'Description': descr,
+                'Link': link
+            }
+
+            db.Vacancies.insert(vacancy)
             # time.sleep(random.randrange(1, 3))
+            print(f"Vacancy {vac_num}/{all_vacs_qty} inserted in DB")
+
+            vac_num += 1
 
     print("All vacancies from Dev.by are presented")
 
 
-parsing_glassdoor()
-# parsing_dev()
+# parsing_glassdoor()
+parsing_dev()
 
 
 @app.route('/')
@@ -200,4 +248,4 @@ def hello_world():
     pass
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)

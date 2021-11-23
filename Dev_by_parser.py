@@ -12,7 +12,6 @@ app = Flask(__name__)
 
 def create_search_url_by_request():
     query_input = input("\nEnter keywords by space here: ").split()
-    # query_input = "3"
     if len(query_input) != 0:
         search_query = query_input
     else:

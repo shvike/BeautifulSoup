@@ -15,7 +15,8 @@ def create_search_url_by_request():
     if len(query_input) != 0:
         search_query = query_input
     else:
-        return "Please enter keyword"
+        print("Please enter keyword")
+        exit()
 
     url_add = "".join([f"%20{i}" if len(search_query) > 1 else i for i in search_query]).strip("%20")
     search_url = "https://www.glassdoor.com/Job/jobs.htm?sc.keyword=" + url_add
