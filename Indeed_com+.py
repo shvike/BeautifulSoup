@@ -19,13 +19,13 @@ app = Flask(__name__)
 #     return search_url
 
 def create_search_url_by_request():
-    query_position = "%20".join(input("\nEnter keywords of position here: ").split())
-    query_location = input("Enter keywords of location (only USA and only ONE word) here: ")
+    query_position = "=" + "%20".join(input("\nEnter keywords of position here: ").split())
+    query_location = "=" + input("Enter keywords of location (only USA and only ONE word) here: ")
     if not query_position or not query_location:
         print("Incorrect request")
         exit()
     # search_url = f"https://www.indeed.com/q-{query_input[0]}-l-{query_input[1]}-jobs"
-    search_url = f"https://www.indeed.com/jobs?q={query_position}&l={query_location}"
+    search_url = f"https://www.indeed.com/jobs?q{query_position}&l{query_location}"
     return search_url
 
 def vac_data(soup, count):
